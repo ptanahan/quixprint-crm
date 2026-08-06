@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Quixprint CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="toast" class="toast"></div>
+
+<main id="authView" class="auth-shell">
+  <section class="auth-card">
+    <div class="logo">Q</div>
+    <p class="eyebrow">QUIXPRINT</p>
+    <h1>Sales CRM</h1>
+    <p class="muted">Manage companies, contacts, conversations and follow-ups in one shared workspace.</p>
+    <div class="tabs">
+      <button class="tab active" data-auth="login">Log in</button>
+      <button class="tab" data-auth="signup">Create account</button>
+    </div>
+    <form id="loginForm" class="stack">
+      <label>Email<input id="loginEmail" type="email" required></label>
+      <label>Password<input id="loginPassword" type="password" required></label>
+      <button class="btn primary">Log in</button>
+    </form>
+    <form id="signupForm" class="stack hidden">
+      <label>Name<input id="signupName" required></label>
+      <label>Email<input id="signupEmail" type="email" required></label>
+      <label>Password<input id="signupPassword" type="password" minlength="8" required></label>
+      <label>Workspace join code <span class="optional">(optional)</span><input id="joinCode"></label>
+      <button class="btn primary">Create account</button>
+    </form>
+    <div id="configWarning" class="warning hidden">Add your Supabase URL and publishable key to <code>config.js</code>.</div>
+  </section>
+</main>
+
+<div id="appView" class="app hidden">
+  <aside class="sidebar">
+    <div>
+      <div class="side-brand"><div class="logo small">Q</div><strong>Quixprint CRM</strong></div>
+      <nav>
+        <button class="nav active" data-view="dashboard">Dashboard</button>
+        <button class="nav" data-view="pipeline">Pipeline</button>
+        <button class="nav" data-view="companies">Companies</button>
+        <button class="nav" data-view="followups">Follow-ups</button>
+        <button class="nav" data-view="settings">Settings</button>
+      </nav>
+    </div>
+    <button id="logoutBtn" class="nav logout">Log out</button>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div><p class="eyebrow">QUIXPRINT SALES</p><h2 id="pageTitle">Dashboard</h2></div>
+      <button id="addCompanyBtn" class="btn primary">+ Add company</button>
+    </header>
+
+    <section id="dashboardView" class="view">
+      <div class="stats">
+        <article><span>Companies</span><strong id="statCompanies">0</strong></article>
+        <article><span>Contacts</span><strong id="statContacts">0</strong></article>
+        <article><span>Follow-ups due</span><strong id="statDue">0</strong></article>
+        <article><span>Open pipeline</span><strong id="statPipeline">$0</strong></article>
+      </div>
+      <div class="grid2">
+        <article class="panel"><h3>Pipeline</h3><div id="funnel"></div></article>
+        <article class="panel"><h3>Today's priorities</h3><div id="priorityList" class="list"></div></article>
+      </div>
+      <div class="grid2">
+        <article class="panel"><h3>Recently updated companies</h3><div id="recentCompanies" class="list"></div></article>
+        <article class="panel"><h3>Recent activity</h3><div id="recentActivity" class="list"></div></article>
+      </div>
+    </section>
+
+    <section id="pipelineView" class="view hidden">
+      <div id="kanban" class="kanban"></div>
+    </section>
+
+    <section id="companiesView" class="view hidden">
+      <div class="toolbar">
+        <input id="searchInput" type="search" placeholder="Search company, contact, industry, location, product...">
+        <select id="stageFilter"></select>
+        <select id="ownerFilter"><option value="">All owners</option></select>
+        <select id="priorityFilter"><option value="">All priorities</option><option>Hot</option><option>Warm</option><option>Normal</option><option>Low</option></select>
+        <button id="exportBtn" class="btn secondary">Export CSV</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Company</th><th>Contacts</th><th>Stage</th><th>Priority</th><th>Owner</th><th>Follow-up</th><th>Potential</th><th></th></tr></thead>
+          <tbody id="companyRows"></tbody>
+        </table>
+      </div>
+      <div id="emptyCompanies" class="empty hidden">No matching companies.</div>
+    </section>
+
+    <section id="followupsView" class="view hidden">
+      <div class="follow-grid">
+        <article class="panel"><h3>Overdue</h3><div id="overdueList" class="list"></div></article>
+        <article class="panel"><h3>Today</h3><div id="todayList" class="list"></div></article>
+        <article class="panel"><h3>Upcoming</h3><div id="upcomingList" class="list"></div></article>
+      </div>
+    </section>
+
+    <section id="settingsView" class="view hidden">
+      <div class="settings-grid">
+        <article class="panel">
+          <h3>Workspace invite code</h3>
+          <div class="invite"><code id="workspaceCode">—</code><button id="copyCodeBtn" class="btn secondary">Copy</button></div>
+        </article>
+        <article class="panel"><h3>Team</h3><div id="teamList" class="list"></div></article>
+        <article class="panel">
+          <h3>Import companies and contacts</h3>
+          <p class="muted">Repeated company names will be grouped into one company with multiple contacts.</p>
+          <input id="csvInput" type="file" accept=".csv">
+          <a href="company-contact-import-template.csv" download class="text-link">Download CSV template</a>
+        </article>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="companyDialog">
+  <div class="dialog-shell">
+    <div class="modal-head">
+      <div><p class="eyebrow">COMPANY RECORD</p><h2 id="companyTitle">Add company</h2></div>
+      <button class="icon" id="closeCompanyBtn">×</button>
+    </div>
+    <div class="record-tabs">
+      <button class="record-tab active" data-tab="overview">Overview</button>
+      <button class="record-tab" data-tab="contacts">Contacts</button>
+      <button class="record-tab" data-tab="activity">Activity</button>
+    </div>
+
+    <section id="overviewTab">
+      <form id="companyForm">
+        <input id="companyId" type="hidden">
+        <div class="form-grid">
+          <label>Company name*<input id="companyName" required></label>
+          <label>Website<input id="website" type="url" placeholder="https://"></label>
+          <label>Industry<input id="industry"></label>
+          <label>Location<input id="location"></label>
+          <label>Stage<select id="stage"></select></label>
+          <label>Priority<select id="priority"><option>Normal</option><option>Hot</option><option>Warm</option><option>Low</option></select></label>
+          <label>Owner<select id="owner"></select></label>
+          <label>Lead source<input id="source"></label>
+          <label>Products of interest<input id="products"></label>
+          <label>Estimated annual value<input id="estimatedValue" type="number" min="0" step="0.01"></label>
+          <label>Last contacted<input id="lastContacted" type="date"></label>
+          <label>Next follow-up<input id="nextFollowUp" type="date"></label>
+        </div>
+        <label>Opportunity summary<textarea id="opportunitySummary" rows="3"></textarea></label>
+        <label>Notes<textarea id="notes" rows="4"></textarea></label>
+        <div class="modal-actions">
+          <button id="deleteCompanyBtn" type="button" class="btn danger hidden">Delete</button>
+          <span class="grow"></span>
+          <button id="cancelCompanyBtn" type="button" class="btn secondary">Cancel</button>
+          <button class="btn primary">Save company</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="contactsTab" class="hidden">
+      <div id="contactWarning" class="warning hidden">Save the company before adding contacts.</div>
+      <form id="contactForm" class="contact-form">
+        <input id="contactId" type="hidden">
+        <div class="form-grid">
+          <label>Name*<input id="contactName" required></label>
+          <label>Title<input id="contactTitle"></label>
+          <label>Email<input id="contactEmail" type="email"></label>
+          <label>Phone<input id="contactPhone"></label>
+          <label>LinkedIn<input id="contactLinkedin" type="url"></label>
+          <label>Primary contact<select id="contactPrimary"><option value="false">No</option><option value="true">Yes</option></select></label>
+        </div>
+        <div class="modal-actions">
+          <button id="cancelContactEditBtn" type="button" class="btn secondary hidden">Cancel edit</button>
+          <span class="grow"></span>
+          <button class="btn primary">Save contact</button>
+        </div>
+      </form>
+      <div id="contactsList" class="contact-list"></div>
+    </section>
+
+    <section id="activityTab" class="hidden">
+      <div id="activityWarning" class="warning hidden">Save the company before logging activity.</div>
+      <form id="activityForm" class="activity-form">
+        <select id="activityType"><option>Call</option><option>Email</option><option>Meeting</option><option>Note</option><option>Quote</option></select>
+        <select id="activityContact"><option value="">No specific contact</option></select>
+        <input id="activitySubject" placeholder="Subject" required>
+        <input id="activityDate" type="date">
+        <textarea id="activityBody" rows="3" placeholder="Details and next step"></textarea>
+        <button class="btn primary">Add activity</button>
+      </form>
+      <div id="activityTimeline" class="timeline"></div>
+    </section>
+  </div>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
