@@ -9,7 +9,7 @@ function initTabs(){$$("[data-auth]").forEach(b=>b.onclick=()=>{$$("[data-auth]"
 async function init(){initTabs();if(!ok){$("#configWarning").classList.remove("hidden");return}let {data:{session}}=await db.auth.getSession();if(session)await enter(session.user)}
 $("#loginForm").onsubmit=async e=>{e.preventDefault();let {error}=await db.auth.signInWithPassword({email:$("#loginEmail").value.trim(),password:$("#loginPassword").value});if(error)toast(error.message,true);else location.reload()}
 $("#signupForm").onsubmit=async e=>{e.preventDefault();let code=$("#joinCode").value.trim().toUpperCase(),{data,error}=await db.auth.signUp({email:$("#signupEmail").value.trim(),password:$("#signupPassword").value,options:{data:{display_name:$("#signupName").value.trim()}}});if(error)return toast(error.message,true);if(!data.session)return toast("Confirm your email, then log in.");if(code){let {error:x}=await db.rpc("join_workspace",{invite_code_input:code});if(x)return toast(x.message,true)}await enter(data.user)}
-async function enter(u){S.user=u;$("#authView").classList.add("hidden");$("#appView").classList.remove("hidden");await loadAll();bind();render()}
+async function enter(u){S.user=u;$("#authView").classList.add("hidden");$("#appView").classList.remove("hidden");await loadAll();bind();setupCompanySorting();render()}
 async function loadAll(){let {data:w,error}=await db.from("workspace_members").select("workspace_id,workspaces(id,name,invite_code)").eq("user_id",S.user.id).single();if(error)return toast(error.message,true);S.workspace=w.workspaces;let [m,c,k,a]=await Promise.all([db.from("workspace_members").select("*").eq("workspace_id",S.workspace.id),db.from("companies").select("*").eq("workspace_id",S.workspace.id).order("updated_at",{ascending:false}),db.from("contacts").select("*").eq("workspace_id",S.workspace.id),db.from("activities").select("*").eq("workspace_id",S.workspace.id).order("activity_date",{ascending:false}).order("created_at",{ascending:false})]);S.members=m.data||[];S.companies=c.data||[];S.contacts=k.data||[];S.activities=a.data||[];let opts='<option value="">Unassigned</option>'+S.members.map(x=>`<option value="${x.user_id}">${esc(x.display_name||x.email)}</option>`).join("");$("#owner").innerHTML=opts;$("#ownerFilter").innerHTML='<option value="">All owners</option>'+opts.replace('<option value="">Unassigned</option>','')}
 let bound=false;function bind(){if(bound)return;bound=true;$$(".nav[data-view]").forEach(b=>b.onclick=()=>view(b.dataset.view));$("#logoutBtn").onclick=()=>db.auth.signOut().then(()=>location.reload());$("#addCompanyBtn").onclick=()=>openCompany();$("#closeCompanyBtn").onclick=$("#cancelCompanyBtn").onclick=()=>$("#companyDialog").close();$("#companyForm").onsubmit=saveCompany;$("#deleteCompanyBtn").onclick=deleteCompany;$("#contactForm").onsubmit=saveContact;$("#cancelContactEditBtn").onclick=resetContactForm;$("#activityForm").onsubmit=saveActivity;$$("[data-tab]").forEach(b=>b.onclick=()=>tab(b.dataset.tab));["searchInput","stageFilter","ownerFilter","priorityFilter"].forEach(id=>$("#"+id).addEventListener(id==="searchInput"?"input":"change",renderCompanies));$("#copyCodeBtn").onclick=()=>navigator.clipboard.writeText(S.workspace.invite_code).then(()=>toast("Invite code copied."));$("#exportBtn").onclick=exportCSV;$("#csvInput").onchange=importCSV}
 function view(n){$$(".view").forEach(x=>x.classList.add("hidden"));$("#"+n+"View").classList.remove("hidden");$$(".nav[data-view]").forEach(x=>x.classList.toggle("active",x.dataset.view===n));$("#pageTitle").textContent={dashboard:"Dashboard",pipeline:"Pipeline",companies:"Companies",followups:"Follow-ups",settings:"Settings"}[n]}
@@ -18,7 +18,104 @@ function renderDashboard(){let due=S.companies.filter(c=>active(c)&&c.next_follo
 function list(items,sub,empty){return items.length?items.map(c=>`<div class="list-item"><div><strong>${esc(c.name)}</strong><small>${esc(c.industry||c.location||"")}</small></div><div><span>${esc(sub(c))}</span><small>${money(c.estimated_value)}</small></div></div>`).join(""):`<div class="empty">${empty}</div>`}
 function renderPipeline(){$("#kanban").innerHTML=stages.map(s=>`<section class="kanban-col"><div class="kanban-head"><h3>${s}</h3><strong>${S.companies.filter(c=>c.stage===s).length}</strong></div>${S.companies.filter(c=>c.stage===s).map(c=>`<article class="kanban-card" onclick="openCompany('${c.id}')"><strong>${esc(c.name)}</strong><p>${esc(c.industry||c.location||"")}</p><p>${S.contacts.filter(x=>x.company_id===c.id).length} contacts</p><div class="card-foot"><span class="priority ${c.priority}">${c.priority}</span><span>${fmt(c.next_follow_up)}</span></div><div class="card-foot"><span>${esc(member(c.owner_id))}</span><strong>${money(c.estimated_value)}</strong></div></article>`).join("")}</section>`).join("")}
 function filtered(){let q=$("#searchInput").value.toLowerCase(),st=$("#stageFilter").value,ow=$("#ownerFilter").value,pr=$("#priorityFilter").value;return S.companies.filter(c=>{let cs=S.contacts.filter(x=>x.company_id===c.id);return(!st||c.stage===st)&&(!ow||c.owner_id===ow)&&(!pr||c.priority===pr)&&(!q||[c.name,c.website,c.industry,c.location,c.products,c.notes,c.opportunity_summary,...cs.flatMap(x=>[x.name,x.title,x.email,x.phone])].some(v=>String(v||"").toLowerCase().includes(q)))})}
-function renderCompanies(){let rows=filtered();$("#emptyCompanies").classList.toggle("hidden",!!rows.length);$("#companyRows").innerHTML=rows.map(c=>{let cs=S.contacts.filter(x=>x.company_id===c.id);return `<tr><td><strong class="company-name-link" onclick="openCompany('${c.id}')">${esc(c.name)}</strong><br><small>${esc(c.industry||c.location||"")}</small></td><td>${cs.length}${cs.find(x=>x.is_primary)?` · ${esc(cs.find(x=>x.is_primary).name)}`:""}</td><td><span class="badge ${c.stage}">${c.stage}</span></td><td><span class="priority ${c.priority}">${c.priority}</span></td><td>${esc(member(c.owner_id))}</td><td>${fmt(c.next_follow_up)}</td><td>${money(c.estimated_value)}</td><td><button class="row-btn" onclick="openCompany('${c.id}')">•••</button></td></tr>`}).join("")}
+let companySort = {
+  column: null,
+  direction: "asc"
+};
+
+function sortCompanies(rows) {
+  if (!companySort.column) return rows;
+
+  const direction = companySort.direction === "asc" ? 1 : -1;
+
+  const stageOrder = {
+    "New Lead": 1,
+    "Researching": 2,
+    "Contacted": 3,
+    "Follow-Up": 4,
+    "Quoted": 5,
+    "Won": 6,
+    "Lost": 7
+  };
+
+  const priorityOrder = {
+    "Hot": 1,
+    "Warm": 2,
+    "Normal": 3,
+    "Low": 4
+  };
+
+  return [...rows].sort((a, b) => {
+    let av;
+    let bv;
+
+    switch (companySort.column) {
+      case "company":
+        av = a.name || "";
+        bv = b.name || "";
+        return av.localeCompare(bv) * direction;
+
+      case "stage":
+        av = stageOrder[a.stage] || 999;
+        bv = stageOrder[b.stage] || 999;
+        return (av - bv) * direction;
+
+      case "priority":
+        av = priorityOrder[a.priority] || 999;
+        bv = priorityOrder[b.priority] || 999;
+        return (av - bv) * direction;
+
+      case "owner":
+        av = member(a.owner_id) || "";
+        bv = member(b.owner_id) || "";
+        return av.localeCompare(bv) * direction;
+
+      case "followup":
+        av = a.next_follow_up || "9999-12-31";
+        bv = b.next_follow_up || "9999-12-31";
+        return av.localeCompare(bv) * direction;
+
+      case "potential":
+        av = Number(a.estimated_value || 0);
+        bv = Number(b.estimated_value || 0);
+        return (av - bv) * direction;
+
+      default:
+        return 0;
+    }
+  });
+}
+
+function setupCompanySorting() {
+  document.querySelectorAll("#companiesView th.sortable").forEach(th => {
+    th.onclick = () => {
+      const column = th.dataset.sort;
+
+      if (companySort.column === column) {
+        companySort.direction =
+          companySort.direction === "asc" ? "desc" : "asc";
+      } else {
+        companySort.column = column;
+        companySort.direction = "asc";
+      }
+
+      renderCompanies();
+    };
+  });
+}
+
+function updateSortIcons() {
+  document.querySelectorAll("#companiesView th.sortable").forEach(th => {
+    const icon = th.querySelector(".sort-icon");
+
+    if (th.dataset.sort !== companySort.column) {
+      icon.textContent = "↕";
+    } else {
+      icon.textContent = companySort.direction === "asc" ? "↑" : "↓";
+    }
+  });
+}
+function renderCompanies(){let rows=sortCompanies(filtered());updateSortIcons();$("#emptyCompanies").classList.toggle("hidden",!!rows.length);$("#companyRows").innerHTML=rows.map(c=>{let cs=S.contacts.filter(x=>x.company_id===c.id);return `<tr><td><strong class="company-name-link" onclick="openCompany('${c.id}')">${esc(c.name)}</strong><br><small>${esc(c.industry||c.location||"")}</small></td><td>${cs.length}${cs.find(x=>x.is_primary)?` · ${esc(cs.find(x=>x.is_primary).name)}`:""}</td><td><span class="badge ${c.stage}">${c.stage}</span></td><td><span class="priority ${c.priority}">${c.priority}</span></td><td>${esc(member(c.owner_id))}</td><td>${fmt(c.next_follow_up)}</td><td>${money(c.estimated_value)}</td><td><button class="row-btn" onclick="openCompany('${c.id}')">•••</button></td></tr>`}).join("")}
 function renderFollowups(){let a=S.companies.filter(c=>active(c)&&c.next_follow_up).sort((x,y)=>x.next_follow_up.localeCompare(y.next_follow_up)),t=today();$("#overdueList").innerHTML=list(a.filter(c=>c.next_follow_up<t),c=>fmt(c.next_follow_up),"Nothing overdue.");$("#todayList").innerHTML=list(a.filter(c=>c.next_follow_up===t),c=>c.priority,"Nothing due today.");$("#upcomingList").innerHTML=list(a.filter(c=>c.next_follow_up>t),c=>fmt(c.next_follow_up),"Nothing upcoming.")}
 function renderSettings(){$("#workspaceCode").textContent=S.workspace.invite_code;$("#teamList").innerHTML=S.members.map(m=>`<div class="list-item"><div><strong>${esc(m.display_name||"Team member")}</strong><small>${esc(m.email)}</small></div><span>${esc(m.role)}</span></div>`).join("")}
 window.openCompany=id=>{let c=S.companies.find(x=>x.id===id);S.current=c||null;$("#companyId").value=c?.id||"";$("#companyTitle").textContent=c?"Edit company":"Add company";let map={companyName:"name",website:"website",industry:"industry",location:"location",stage:"stage",priority:"priority",owner:"owner_id",source:"source",products:"products",estimatedValue:"estimated_value",lastContacted:"last_contacted",nextFollowUp:"next_follow_up",opportunitySummary:"opportunity_summary",notes:"notes"};Object.entries(map).forEach(([el,k])=>$("#"+el).value=c?.[k]??(el==="stage"?"New Lead":el==="priority"?"Normal":""));$("#owner").value=c?.owner_id||S.user.id;$("#deleteCompanyBtn").classList.toggle("hidden",!c);resetContactForm();renderContacts();renderActivity();tab("overview");$("#companyDialog").showModal()}
