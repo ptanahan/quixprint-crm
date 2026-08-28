@@ -82,3 +82,11 @@
   background: #E9E7E2;
   color: #111111;
 }
+
+.company-name-link {
+  cursor: pointer;
+}
+
+.company-name-link:hover {
+  text-decoration: underline;
+}
