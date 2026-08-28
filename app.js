@@ -222,9 +222,12 @@ function renderCompanies(){
     let cs=S.contacts.filter(x=>x.company_id===c.id);
 
     let printFit =
-      c.print_fit_score === null || c.print_fit_score === undefined
-        ? "—"
-        : `<span class="print-fit-score" title="${esc(c.print_fit_reason||"")}">${c.print_fit_score}</span>`;
+  c.print_fit_score === null || c.print_fit_score === undefined
+    ? "—"
+    : `<div class="print-fit-wrap">
+        <span class="print-fit-score">${c.print_fit_score}</span>
+        <small class="print-fit-reason">${esc(c.print_fit_reason || "")}</small>
+      </div>`;
 
     return `<tr>
       <td>
