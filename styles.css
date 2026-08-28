@@ -26,3 +26,59 @@
   font-weight: 600;
   line-height: 1;
 }
+
+/* ========================================
+   QUIXPRINT CRM - LIGHT SIDEBAR
+   ======================================== */
+
+/* Main sidebar */
+.sidebar {
+  background: #F4F3F0;
+  color: #171717;
+  border-right: 1px solid #E2E0DB;
+}
+
+/* Quixprint logo / CRM area */
+.side-brand,
+.crm-brand {
+  color: #171717;
+}
+
+/* Divider between Quixprint logo and CRM */
+.crm-brand-divider {
+  background: #CAC7C0;
+}
+
+/* CRM text */
+.crm-brand-label {
+  color: #171717;
+}
+
+/* Sidebar navigation */
+.sidebar .nav {
+  color: #55534F;
+  background: transparent;
+}
+
+/* Navigation hover */
+.sidebar .nav:hover {
+  background: #E9E7E2;
+  color: #111111;
+}
+
+/* Currently selected page */
+.sidebar .nav.active {
+  background: #FFFFFF;
+  color: #111111;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Logout */
+.sidebar .logout {
+  color: #77736D;
+}
+
+.sidebar .logout:hover {
+  background: #E9E7E2;
+  color: #111111;
+}
