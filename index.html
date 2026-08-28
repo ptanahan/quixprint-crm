@@ -85,28 +85,32 @@
       <div id="kanban" class="kanban"></div>
     </section>
 
-    <section id="companiesView" class="view hidden">
-      <div class="toolbar">
-        <input id="searchInput" type="search" placeholder="Search company, contact, industry, location, product...">
-        <select id="stageFilter"></select>
-        <select id="ownerFilter"><option value="">All owners</option></select>
-        <select id="priorityFilter"><option value="">All priorities</option><option>Hot</option><option>Warm</option><option>Normal</option><option>Low</option></select>
-        <button id="exportBtn" class="btn secondary">Export CSV</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-  <tr>
-    <th class="sortable" data-sort="company">Company <span class="sort-icon">↕</span></th>
-    <th>Contacts</th>
-    <th class="sortable" data-sort="stage">Stage <span class="sort-icon">↕</span></th>
-    <th class="sortable" data-sort="priority">Priority <span class="sort-icon">↕</span></th>
-    <th class="sortable" data-sort="owner">Owner <span class="sort-icon">↕</span></th>
-    <th class="sortable" data-sort="followup">Follow-up <span class="sort-icon">↕</span></th>
-    <th class="sortable" data-sort="potential">Potential <span class="sort-icon">↕</span></th>
-    <th></th>
-  </tr>
-</thead>
+<section id="companiesView" class="view hidden">
+  <div class="toolbar">
+    <input id="searchInput" type="search" placeholder="Search company, contact, industry, location, product...">
+    <select id="stageFilter"></select>
+    <select id="ownerFilter"><option value="">All owners</option></select>
+    <select id="priorityFilter"><option value="">All priorities</option><option>Hot</option><option>Warm</option><option>Normal</option><option>Low</option></select>
+
+    <button id="aiScoreBtn" class="btn secondary">AI Score Prospects</button>
+    <button id="exportBtn" class="btn secondary">Export CSV</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="sortable" data-sort="company">Company <span class="sort-icon">↕</span></th>
+          <th>Contacts</th>
+          <th class="sortable" data-sort="stage">Stage <span class="sort-icon">↕</span></th>
+          <th class="sortable" data-sort="priority">Priority <span class="sort-icon">↕</span></th>
+          <th class="sortable" data-sort="owner">Owner <span class="sort-icon">↕</span></th>
+          <th class="sortable" data-sort="followup">Follow-up <span class="sort-icon">↕</span></th>
+          <th class="sortable" data-sort="potential">Potential <span class="sort-icon">↕</span></th>
+          <th class="sortable" data-sort="printfit">Print Fit <span class="sort-icon">↕</span></th>
+          <th></th>
+        </tr>
+      </thead>
           <tbody id="companyRows"></tbody>
         </table>
       </div>
