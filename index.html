@@ -94,7 +94,18 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Company</th><th>Contacts</th><th>Stage</th><th>Priority</th><th>Owner</th><th>Follow-up</th><th>Potential</th><th></th></tr></thead>
+          <thead>
+  <tr>
+    <th class="sortable" data-sort="company">Company <span class="sort-icon">↕</span></th>
+    <th>Contacts</th>
+    <th class="sortable" data-sort="stage">Stage <span class="sort-icon">↕</span></th>
+    <th class="sortable" data-sort="priority">Priority <span class="sort-icon">↕</span></th>
+    <th class="sortable" data-sort="owner">Owner <span class="sort-icon">↕</span></th>
+    <th class="sortable" data-sort="followup">Follow-up <span class="sort-icon">↕</span></th>
+    <th class="sortable" data-sort="potential">Potential <span class="sort-icon">↕</span></th>
+    <th></th>
+  </tr>
+</thead>
           <tbody id="companyRows"></tbody>
         </table>
       </div>
