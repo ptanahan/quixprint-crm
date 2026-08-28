@@ -90,3 +90,22 @@
 .company-name-link:hover {
   text-decoration: underline;
 }
+
+/* Company table sorting */
+
+#companiesView th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+#companiesView th.sortable:hover {
+  color: #147EE0;
+}
+
+#companiesView .sort-icon {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 12px;
+  opacity: 0.55;
+}
