@@ -9,7 +9,76 @@ function initTabs(){$$("[data-auth]").forEach(b=>b.onclick=()=>{$$("[data-auth]"
 async function init(){initTabs();if(!ok){$("#configWarning").classList.remove("hidden");return}let {data:{session}}=await db.auth.getSession();if(session)await enter(session.user)}
 $("#loginForm").onsubmit=async e=>{e.preventDefault();let {error}=await db.auth.signInWithPassword({email:$("#loginEmail").value.trim(),password:$("#loginPassword").value});if(error)toast(error.message,true);else location.reload()}
 $("#signupForm").onsubmit=async e=>{e.preventDefault();let code=$("#joinCode").value.trim().toUpperCase(),{data,error}=await db.auth.signUp({email:$("#signupEmail").value.trim(),password:$("#signupPassword").value,options:{data:{display_name:$("#signupName").value.trim()}}});if(error)return toast(error.message,true);if(!data.session)return toast("Confirm your email, then log in.");if(code){let {error:x}=await db.rpc("join_workspace",{invite_code_input:code});if(x)return toast(x.message,true)}await enter(data.user)}
-async function enter(u){S.user=u;$("#authView").classList.add("hidden");$("#appView").classList.remove("hidden");await loadAll();bind();setupCompanySorting();render()}
+let realtimeChannel = null;
+let realtimeRefreshTimer = null;
+
+function scheduleRealtimeRefresh() {
+  clearTimeout(realtimeRefreshTimer);
+
+  realtimeRefreshTimer = setTimeout(async () => {
+    await loadAll();
+    render();
+
+    if (S.current) {
+      const updatedCompany = S.companies.find(
+        c => c.id === S.current.id
+      );
+
+      if (updatedCompany) {
+        S.current = updatedCompany;
+        renderContacts();
+        renderActivity();
+      }
+    }
+  }, 400);
+}
+
+function setupRealtime() {
+  if (realtimeChannel) {
+    db.removeChannel(realtimeChannel);
+  }
+
+  realtimeChannel = db
+    .channel(`crm-workspace-${S.workspace.id}`)
+
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "companies",
+        filter: `workspace_id=eq.${S.workspace.id}`
+      },
+      scheduleRealtimeRefresh
+    )
+
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "contacts",
+        filter: `workspace_id=eq.${S.workspace.id}`
+      },
+      scheduleRealtimeRefresh
+    )
+
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "activities",
+        filter: `workspace_id=eq.${S.workspace.id}`
+      },
+      scheduleRealtimeRefresh
+    )
+
+    .subscribe(status => {
+      console.log("CRM Realtime:", status);
+    });
+}
+async function enter(u){S.user=u;$("#authView").classList.add("hidden");$("#appView").classList.remove("hidden");await loadAll();bind();setupCompanySorting();setupRealtime();render()}
 async function loadAll(){let {data:w,error}=await db.from("workspace_members").select("workspace_id,workspaces(id,name,invite_code)").eq("user_id",S.user.id).single();if(error)return toast(error.message,true);S.workspace=w.workspaces;let [m,c,k,a]=await Promise.all([db.from("workspace_members").select("*").eq("workspace_id",S.workspace.id),db.from("companies").select("*").eq("workspace_id",S.workspace.id).order("updated_at",{ascending:false}),db.from("contacts").select("*").eq("workspace_id",S.workspace.id),db.from("activities").select("*").eq("workspace_id",S.workspace.id).order("activity_date",{ascending:false}).order("created_at",{ascending:false})]);S.members=m.data||[];S.companies=c.data||[];S.contacts=k.data||[];S.activities=a.data||[];let opts='<option value="">Unassigned</option>'+S.members.map(x=>`<option value="${x.user_id}">${esc(x.display_name||x.email)}</option>`).join("");$("#owner").innerHTML=opts;$("#ownerFilter").innerHTML='<option value="">All owners</option>'+opts.replace('<option value="">Unassigned</option>','')}
 let bound=false;function bind(){if(bound)return;bound=true;$$(".nav[data-view]").forEach(b=>b.onclick=()=>view(b.dataset.view));$("#logoutBtn").onclick=()=>db.auth.signOut().then(()=>location.reload());$("#addCompanyBtn").onclick=()=>openCompany();$("#closeCompanyBtn").onclick=$("#cancelCompanyBtn").onclick=()=>$("#companyDialog").close();$("#companyForm").onsubmit=saveCompany;$("#deleteCompanyBtn").onclick=deleteCompany;$("#contactForm").onsubmit=saveContact;$("#cancelContactEditBtn").onclick=resetContactForm;$("#activityForm").onsubmit=saveActivity;$$("[data-tab]").forEach(b=>b.onclick=()=>tab(b.dataset.tab));["searchInput","stageFilter","ownerFilter","priorityFilter"].forEach(id=>$("#"+id).addEventListener(id==="searchInput"?"input":"change",renderCompanies));$("#copyCodeBtn").onclick=()=>navigator.clipboard.writeText(S.workspace.invite_code).then(()=>toast("Invite code copied."));$("#exportBtn").onclick=exportCSV;$("#aiScoreBtn").onclick=scoreUnscoredCompanies;$("#csvInput").onchange=importCSV}
 function view(n){$$(".view").forEach(x=>x.classList.add("hidden"));$("#"+n+"View").classList.remove("hidden");$$(".nav[data-view]").forEach(x=>x.classList.toggle("active",x.dataset.view===n));$("#pageTitle").textContent={dashboard:"Dashboard",pipeline:"Pipeline",companies:"Companies",followups:"Follow-ups",settings:"Settings"}[n]}
