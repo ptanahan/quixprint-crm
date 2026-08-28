@@ -110,29 +110,89 @@
   opacity: 0.55;
 }
 
-.print-fit-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-width: 220px;
-}
+/* Print Fit score */
 
 .print-fit-score {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: fit-content;
-  min-width: 36px;
+  min-width: 38px;
   height: 28px;
-  padding: 0 8px;
+  padding: 0 9px;
+  border: 0;
   border-radius: 999px;
   background: #f1f1f1;
+  color: #171717;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.print-fit-score:hover {
+  background: #e5e5e5;
+}
+
+
+/* Print Fit popup */
+
+.print-fit-dialog {
+  width: min(440px, 90vw);
+  border: 0;
+  border-radius: 16px;
+  padding: 0;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .22);
+}
+
+.print-fit-dialog::backdrop {
+  background: rgba(0, 0, 0, .45);
+}
+
+.print-fit-modal {
+  padding: 24px;
+}
+
+.print-fit-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.print-fit-modal-head small {
+  color: #777;
+}
+
+.print-fit-modal-head h3 {
+  margin: 4px 0 0;
+}
+
+.print-fit-close {
+  border: 0;
+  background: transparent;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  color: #777;
+}
+
+.print-fit-modal-score {
+  display: inline-flex;
+  margin-top: 22px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: #f1f1f1;
+  font-size: 18px;
   font-weight: 700;
 }
 
-.print-fit-reason {
-  display: block;
-  font-size: 11px;
-  line-height: 1.3;
-  color: #777;
+#printFitModalReason {
+  margin: 18px 0 0;
+  line-height: 1.55;
+  color: #444;
+}
+
+.print-fit-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 24px;
 }
