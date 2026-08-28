@@ -33,6 +33,269 @@ window.deleteContact=async id=>{if(!confirm("Delete this contact?"))return;let {
 function renderActivity(){let enabled=!!S.current;$("#activityWarning").classList.toggle("hidden",enabled);$("#activityForm").classList.toggle("hidden",!enabled);$("#activityDate").value=today();let rows=S.activities.filter(a=>a.company_id===S.current?.id);$("#activityTimeline").innerHTML=rows.map(a=>{let c=S.contacts.find(x=>x.id===a.contact_id);return `<article class="timeline-item"><h4>${esc(a.activity_type)} · ${esc(a.subject)}</h4><small>${fmt(a.activity_date)}${c?" · "+esc(c.name):""}</small>${a.body?`<p>${esc(a.body)}</p>`:""}</article>`}).join("")||'<div class="empty">No activity yet.</div>'}
 async function saveActivity(e){e.preventDefault();if(!S.current)return;let p={workspace_id:S.workspace.id,company_id:S.current.id,contact_id:$("#activityContact").value||null,activity_type:$("#activityType").value,subject:$("#activitySubject").value.trim(),body:$("#activityBody").value.trim()||null,activity_date:$("#activityDate").value||today(),created_by:S.user.id};let {error}=await db.from("activities").insert(p);if(error)return toast(error.message,true);if(["Call","Email","Meeting"].includes(p.activity_type))await db.from("companies").update({last_contacted:p.activity_date,updated_by:S.user.id}).eq("id",S.current.id);$("#activitySubject").value="";$("#activityBody").value="";await loadAll();render();renderActivity();toast("Activity logged.")}
 function exportCSV(){let h=["company","website","industry","location","stage","priority","source","products","estimated_value","last_contacted","next_follow_up","opportunity_summary","notes","contact_name","contact_title","contact_email","contact_phone","contact_linkedin","contact_primary"],q=v=>`"${String(v??"").replaceAll('"','""')}"`,rows=[];filtered().forEach(c=>{let cs=S.contacts.filter(x=>x.company_id===c.id);if(!cs.length)cs=[{}];cs.forEach(k=>rows.push([c.name,c.website,c.industry,c.location,c.stage,c.priority,c.source,c.products,c.estimated_value,c.last_contacted,c.next_follow_up,c.opportunity_summary,c.notes,k.name,k.title,k.email,k.phone,k.linkedin,k.is_primary].map(q).join(",")))});let csv=[h.join(","),...rows].join("\n"),a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=`quixprint-companies-${today()}.csv`;a.click()}
-function parseCSV(t){let rows=[],r=[],c="",quoted=false;for(let i=0;i<t.length;i++){let x=t[i],n=t[i+1];if(x=='"'&&quoted&&n=='"'){c+='"';i++}else if(x=='"')quoted=!quoted;else if(x==","&&!quoted){r.push(c);c=""}else if((x=="\n"||x=="\r")&&!quoted){if(x=="\r"&&n=="\n")i++;r.push(c);if(r.some(v=>v.trim()))rows.push(r);r=[];c=""}else c+=x}r.push(c);if(r.some(v=>v.trim()))rows.push(r);return rows}
-async function importCSV(e){let f=e.target.files[0];if(!f)return;let rows=parseCSV(await f.text()),h=rows[0]?.map(x=>x.trim().toLowerCase());if(!h?.includes("company"))return toast("CSV must include a company column.",true);let data=rows.slice(1).map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]?.trim()||null]))).filter(x=>x.company),groups={};data.forEach(r=>(groups[r.company.toLowerCase()]??=[]).push(r));for(const group of Object.values(groups)){let r=group[0],payload={workspace_id:S.workspace.id,name:r.company,website:r.website||null,industry:r.industry||null,location:r.location||null,stage:stages.includes(r.stage)?r.stage:"New Lead",priority:["Hot","Warm","Normal","Low"].includes(r.priority)?r.priority:"Normal",owner_id:S.user.id,source:r.source||null,products:r.products||null,estimated_value:r.estimated_value?Number(r.estimated_value):null,last_contacted:r.last_contacted||null,next_follow_up:r.next_follow_up||null,opportunity_summary:r.opportunity_summary||null,notes:r.notes||null,updated_by:S.user.id};let {data:company,error}=await db.from("companies").upsert(payload,{onConflict:"workspace_id,name"}).select().single();if(error)return toast(error.message,true);let contacts=group.filter(x=>x.contact_name).map(x=>({workspace_id:S.workspace.id,company_id:company.id,name:x.contact_name,title:x.contact_title||null,email:x.contact_email||null,phone:x.contact_phone||null,linkedin:x.contact_linkedin||null,is_primary:String(x.contact_primary).toLowerCase()==="true"||x.contact_primary==="1"}));if(contacts.length){let {error:ce}=await db.from("contacts").insert(contacts);if(ce)return toast(ce.message,true)}}e.target.value="";await loadAll();render();toast(`${Object.keys(groups).length} companies imported.`)}
+function parseCSV(t) {
+  let rows = [], r = [], c = "", quoted = false;
+
+  for (let i = 0; i < t.length; i++) {
+    let x = t[i], n = t[i + 1];
+
+    if (x == '"' && quoted && n == '"') {
+      c += '"';
+      i++;
+    } else if (x == '"') {
+      quoted = !quoted;
+    } else if (x == "," && !quoted) {
+      r.push(c);
+      c = "";
+    } else if ((x == "\n" || x == "\r") && !quoted) {
+      if (x == "\r" && n == "\n") i++;
+
+      r.push(c);
+
+      if (r.some(v => v.trim())) rows.push(r);
+
+      r = [];
+      c = "";
+    } else {
+      c += x;
+    }
+  }
+
+  r.push(c);
+
+  if (r.some(v => v.trim())) rows.push(r);
+
+  return rows;
+}
+
+function norm(v) {
+  return String(v || "").trim().toLowerCase();
+}
+
+function contactKey(c) {
+  let email = norm(c.email || c.contact_email);
+
+  if (email) {
+    return `email:${email}`;
+  }
+
+  return `name:${norm(c.name || c.contact_name)}|title:${norm(
+    c.title || c.contact_title
+  )}`;
+}
+
+async function withRetry(fn, tries = 3) {
+  let last;
+
+  for (let i = 0; i < tries; i++) {
+    let res = await fn();
+
+    if (!res?.error) return res;
+
+    last = res;
+
+    if (i < tries - 1) {
+      await new Promise(r => setTimeout(r, 500 * (i + 1)));
+    }
+  }
+
+  return last;
+}
+
+async function importCSV(e) {
+  let f = e.target.files[0];
+
+  if (!f) return;
+
+  let rows = parseCSV(await f.text());
+  let h = rows[0]?.map(x => x.trim().toLowerCase());
+
+  if (!h?.includes("company")) {
+    return toast("CSV must include a company column.", true);
+  }
+
+  let data = rows
+    .slice(1)
+    .map((r, i) => ({
+      ...Object.fromEntries(
+        h.map((k, j) => [k, r[j]?.trim() || null])
+      ),
+      __row: i + 2
+    }))
+    .filter(x => x.company);
+
+  let groups = {};
+
+  data.forEach(r => {
+    (groups[norm(r.company)] ??= []).push(r);
+  });
+
+  let importedCompanies = 0;
+  let importedContacts = 0;
+  let skippedContacts = 0;
+  let failures = [];
+
+  for (const group of Object.values(groups)) {
+    let r = group[0];
+
+    let payload = {
+      workspace_id: S.workspace.id,
+      name: r.company,
+      website: r.website || null,
+      industry: r.industry || null,
+      location: r.location || null,
+
+      stage: stages.includes(r.stage)
+        ? r.stage
+        : "New Lead",
+
+      priority: ["Hot", "Warm", "Normal", "Low"].includes(r.priority)
+        ? r.priority
+        : "Normal",
+
+      owner_id: S.user.id,
+      source: r.source || null,
+      products: r.products || null,
+
+      estimated_value:
+        r.estimated_value &&
+        Number.isFinite(Number(r.estimated_value))
+          ? Number(r.estimated_value)
+          : null,
+
+      last_contacted: r.last_contacted || null,
+      next_follow_up: r.next_follow_up || null,
+      opportunity_summary: r.opportunity_summary || null,
+      notes: r.notes || null,
+      updated_by: S.user.id
+    };
+
+    let { data: company, error } = await withRetry(() =>
+      db
+        .from("companies")
+        .upsert(payload, {
+          onConflict: "workspace_id,name"
+        })
+        .select()
+        .single()
+    );
+
+    // IMPORTANT:
+    // A failed company no longer kills the entire import.
+    if (error) {
+      failures.push(
+        `Rows ${group.map(x => x.__row).join(", ")} ` +
+        `(${r.company}): ${error.message}`
+      );
+
+      continue;
+    }
+
+    importedCompanies++;
+
+    // Get contacts that already exist for this company.
+    let {
+      data: existing,
+      error: existingError
+    } = await withRetry(() =>
+      db
+        .from("contacts")
+        .select(
+          "id,name,title,email,phone,linkedin,is_primary"
+        )
+        .eq("workspace_id", S.workspace.id)
+        .eq("company_id", company.id)
+    );
+
+    if (existingError) {
+      failures.push(
+        `Rows ${group.map(x => x.__row).join(", ")} ` +
+        `(${r.company} contacts): ${existingError.message}`
+      );
+
+      continue;
+    }
+
+    // Build a list of contacts that already exist.
+    let existingKeys = new Set(
+      (existing || []).map(contactKey)
+    );
+
+    // Also prevent duplicate contacts within this CSV.
+    let seenKeys = new Set();
+
+    let contacts = [];
+
+    for (const x of group.filter(x => x.contact_name)) {
+      let c = {
+        workspace_id: S.workspace.id,
+        company_id: company.id,
+        name: x.contact_name,
+        title: x.contact_title || null,
+        email: x.contact_email || null,
+        phone: x.contact_phone || null,
+        linkedin: x.contact_linkedin || null,
+
+        is_primary:
+          String(x.contact_primary).toLowerCase() === "true" ||
+          x.contact_primary === "1"
+      };
+
+      let key = contactKey(c);
+
+      // Don't re-add the 92 contacts that already imported.
+      if (
+        existingKeys.has(key) ||
+        seenKeys.has(key)
+      ) {
+        skippedContacts++;
+        continue;
+      }
+
+      seenKeys.add(key);
+      contacts.push(c);
+    }
+
+    if (contacts.length) {
+      let { error: ce } = await withRetry(() =>
+        db.from("contacts").insert(contacts)
+      );
+
+      if (ce) {
+        failures.push(
+          `Rows ${group.map(x => x.__row).join(", ")} ` +
+          `(${r.company} contacts): ${ce.message}`
+        );
+
+        continue;
+      }
+
+      importedContacts += contacts.length;
+    }
+  }
+
+  // Reset the file input so the same CSV can be selected again.
+  e.target.value = "";
+
+  await loadAll();
+  render();
+
+  let msg =
+    `Import complete: ` +
+    `${importedCompanies} companies processed, ` +
+    `${importedContacts} contacts added, ` +
+    `${skippedContacts} duplicate contacts skipped.`;
+
+  if (failures.length) {
+    console.error("CSV import failures", failures);
+
+    toast(
+      `${msg} ${failures.length} company group(s) failed. ` +
+      `Open the browser console for details.`,
+      true
+    );
+  } else {
+    toast(msg);
+  }
+}
 init();
