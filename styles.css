@@ -109,3 +109,16 @@
   font-size: 12px;
   opacity: 0.55;
 }
+
+.print-fit-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #f1f1f1;
+  font-weight: 700;
+  cursor: help;
+}
