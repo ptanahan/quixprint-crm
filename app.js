@@ -11,7 +11,7 @@ $("#loginForm").onsubmit=async e=>{e.preventDefault();let {error}=await db.auth.
 $("#signupForm").onsubmit=async e=>{e.preventDefault();let code=$("#joinCode").value.trim().toUpperCase(),{data,error}=await db.auth.signUp({email:$("#signupEmail").value.trim(),password:$("#signupPassword").value,options:{data:{display_name:$("#signupName").value.trim()}}});if(error)return toast(error.message,true);if(!data.session)return toast("Confirm your email, then log in.");if(code){let {error:x}=await db.rpc("join_workspace",{invite_code_input:code});if(x)return toast(x.message,true)}await enter(data.user)}
 async function enter(u){S.user=u;$("#authView").classList.add("hidden");$("#appView").classList.remove("hidden");await loadAll();bind();setupCompanySorting();render()}
 async function loadAll(){let {data:w,error}=await db.from("workspace_members").select("workspace_id,workspaces(id,name,invite_code)").eq("user_id",S.user.id).single();if(error)return toast(error.message,true);S.workspace=w.workspaces;let [m,c,k,a]=await Promise.all([db.from("workspace_members").select("*").eq("workspace_id",S.workspace.id),db.from("companies").select("*").eq("workspace_id",S.workspace.id).order("updated_at",{ascending:false}),db.from("contacts").select("*").eq("workspace_id",S.workspace.id),db.from("activities").select("*").eq("workspace_id",S.workspace.id).order("activity_date",{ascending:false}).order("created_at",{ascending:false})]);S.members=m.data||[];S.companies=c.data||[];S.contacts=k.data||[];S.activities=a.data||[];let opts='<option value="">Unassigned</option>'+S.members.map(x=>`<option value="${x.user_id}">${esc(x.display_name||x.email)}</option>`).join("");$("#owner").innerHTML=opts;$("#ownerFilter").innerHTML='<option value="">All owners</option>'+opts.replace('<option value="">Unassigned</option>','')}
-let bound=false;function bind(){if(bound)return;bound=true;$$(".nav[data-view]").forEach(b=>b.onclick=()=>view(b.dataset.view));$("#logoutBtn").onclick=()=>db.auth.signOut().then(()=>location.reload());$("#addCompanyBtn").onclick=()=>openCompany();$("#closeCompanyBtn").onclick=$("#cancelCompanyBtn").onclick=()=>$("#companyDialog").close();$("#companyForm").onsubmit=saveCompany;$("#deleteCompanyBtn").onclick=deleteCompany;$("#contactForm").onsubmit=saveContact;$("#cancelContactEditBtn").onclick=resetContactForm;$("#activityForm").onsubmit=saveActivity;$$("[data-tab]").forEach(b=>b.onclick=()=>tab(b.dataset.tab));["searchInput","stageFilter","ownerFilter","priorityFilter"].forEach(id=>$("#"+id).addEventListener(id==="searchInput"?"input":"change",renderCompanies));$("#copyCodeBtn").onclick=()=>navigator.clipboard.writeText(S.workspace.invite_code).then(()=>toast("Invite code copied."));$("#exportBtn").onclick=exportCSV;$("#csvInput").onchange=importCSV}
+let bound=false;function bind(){if(bound)return;bound=true;$$(".nav[data-view]").forEach(b=>b.onclick=()=>view(b.dataset.view));$("#logoutBtn").onclick=()=>db.auth.signOut().then(()=>location.reload());$("#addCompanyBtn").onclick=()=>openCompany();$("#closeCompanyBtn").onclick=$("#cancelCompanyBtn").onclick=()=>$("#companyDialog").close();$("#companyForm").onsubmit=saveCompany;$("#deleteCompanyBtn").onclick=deleteCompany;$("#contactForm").onsubmit=saveContact;$("#cancelContactEditBtn").onclick=resetContactForm;$("#activityForm").onsubmit=saveActivity;$$("[data-tab]").forEach(b=>b.onclick=()=>tab(b.dataset.tab));["searchInput","stageFilter","ownerFilter","priorityFilter"].forEach(id=>$("#"+id).addEventListener(id==="searchInput"?"input":"change",renderCompanies));$("#copyCodeBtn").onclick=()=>navigator.clipboard.writeText(S.workspace.invite_code).then(()=>toast("Invite code copied."));$("#exportBtn").onclick=exportCSV;$("#aiScoreBtn").onclick=scoreUnscoredCompanies;$("#csvInput").onchange=importCSV}
 function view(n){$$(".view").forEach(x=>x.classList.add("hidden"));$("#"+n+"View").classList.remove("hidden");$$(".nav[data-view]").forEach(x=>x.classList.toggle("active",x.dataset.view===n));$("#pageTitle").textContent={dashboard:"Dashboard",pipeline:"Pipeline",companies:"Companies",followups:"Follow-ups",settings:"Settings"}[n]}
 function render(){renderDashboard();renderPipeline();renderCompanies();renderFollowups();renderSettings()}
 function renderDashboard(){let due=S.companies.filter(c=>active(c)&&c.next_follow_up&&c.next_follow_up<=today()),open=S.companies.filter(active);$("#statCompanies").textContent=S.companies.length;$("#statContacts").textContent=S.contacts.length;$("#statDue").textContent=due.length;$("#statPipeline").textContent=money(open.reduce((a,c)=>a+Number(c.estimated_value||0),0));let max=Math.max(...stages.map(s=>S.companies.filter(c=>c.stage===s).length),1);$("#funnel").innerHTML=stages.map(s=>{let n=S.companies.filter(c=>c.stage===s).length;return `<div class="funnel-row"><span>${s}</span><div class="bar"><i style="width:${n/max*100}%"></i></div><strong>${n}</strong></div>`}).join("");$("#priorityList").innerHTML=list(due.slice(0,7),c=>fmt(c.next_follow_up),"Nothing due.");$("#recentCompanies").innerHTML=list(S.companies.slice(0,7),c=>`${c.stage} · ${S.contacts.filter(x=>x.company_id===c.id).length} contacts`,"No companies yet.");$("#recentActivity").innerHTML=S.activities.slice(0,7).map(a=>{let c=S.companies.find(x=>x.id===a.company_id),k=S.contacts.find(x=>x.id===a.contact_id);return `<div class="list-item"><div><strong>${esc(a.activity_type)}: ${esc(a.subject)}</strong><small>${esc(c?.name||"Deleted company")}${k?" · "+esc(k.name):""}</small></div><small>${fmt(a.activity_date)}</small></div>`}).join("")||'<div class="empty">No activity yet.</div>'}
@@ -80,6 +80,11 @@ function sortCompanies(rows) {
         bv = Number(b.estimated_value || 0);
         return (av - bv) * direction;
 
+      case "printfit":
+        av = Number(a.print_fit_score ?? -1);
+        bv = Number(b.print_fit_score ?? -1);
+        return (av - bv) * direction;
+        
       default:
         return 0;
     }
@@ -115,7 +120,137 @@ function updateSortIcons() {
     }
   });
 }
-function renderCompanies(){let rows=sortCompanies(filtered());updateSortIcons();$("#emptyCompanies").classList.toggle("hidden",!!rows.length);$("#companyRows").innerHTML=rows.map(c=>{let cs=S.contacts.filter(x=>x.company_id===c.id);return `<tr><td><strong class="company-name-link" onclick="openCompany('${c.id}')">${esc(c.name)}</strong><br><small>${esc(c.industry||c.location||"")}</small></td><td>${cs.length}${cs.find(x=>x.is_primary)?` · ${esc(cs.find(x=>x.is_primary).name)}`:""}</td><td><span class="badge ${c.stage}">${c.stage}</span></td><td><span class="priority ${c.priority}">${c.priority}</span></td><td>${esc(member(c.owner_id))}</td><td>${fmt(c.next_follow_up)}</td><td>${money(c.estimated_value)}</td><td><button class="row-btn" onclick="openCompany('${c.id}')">•••</button></td></tr>`}).join("")}
+async function scoreCompanyWithAI(company) {
+  const response = await fetch("/.netlify/functions/score-company", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: company.name,
+      website: company.website,
+      industry: company.industry,
+      location: company.location,
+      products: company.products,
+      opportunity_summary: company.opportunity_summary,
+      notes: company.notes
+    })
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || "AI scoring failed.");
+  }
+
+  return result;
+}
+
+async function scoreUnscoredCompanies() {
+  const button = $("#aiScoreBtn");
+
+  const companies = S.companies.filter(
+    c => c.print_fit_score === null || c.print_fit_score === undefined
+  );
+
+  if (!companies.length) {
+    return toast("All companies already have a Print Fit score.");
+  }
+
+  if (!confirm(`AI will score ${companies.length} unscored companies. Continue?`)) {
+    return;
+  }
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = `Scoring 0 of ${companies.length}...`;
+  }
+
+  let completed = 0;
+  let failed = 0;
+
+  for (const company of companies) {
+    try {
+      const result = await scoreCompanyWithAI(company);
+
+      const { error } = await db
+        .from("companies")
+        .update({
+          print_fit_score: result.score,
+          print_fit_reason: result.reason,
+          print_fit_scored_at: new Date().toISOString()
+        })
+        .eq("id", company.id);
+
+      if (error) throw error;
+
+      completed++;
+    } catch (error) {
+      console.error(`AI scoring failed for ${company.name}`, error);
+      failed++;
+    }
+
+    if (button) {
+      button.textContent =
+        `Scoring ${completed + failed} of ${companies.length}...`;
+    }
+
+    await new Promise(r => setTimeout(r, 1200));
+  }
+
+  await loadAll();
+  render();
+
+  if (button) {
+    button.disabled = false;
+    button.textContent = "AI Score Prospects";
+  }
+
+  if (failed) {
+    toast(`Scoring complete: ${completed} scored, ${failed} failed.`, true);
+  } else {
+    toast(`${completed} companies scored successfully.`);
+  }
+}
+function renderCompanies(){
+  let rows=sortCompanies(filtered());
+  updateSortIcons();
+
+  $("#emptyCompanies").classList.toggle("hidden",!!rows.length);
+
+  $("#companyRows").innerHTML=rows.map(c=>{
+    let cs=S.contacts.filter(x=>x.company_id===c.id);
+
+    let printFit =
+      c.print_fit_score === null || c.print_fit_score === undefined
+        ? "—"
+        : `<span class="print-fit-score" title="${esc(c.print_fit_reason||"")}">${c.print_fit_score}</span>`;
+
+    return `<tr>
+      <td>
+        <strong class="company-name-link" onclick="openCompany('${c.id}')">${esc(c.name)}</strong>
+        <br>
+        <small>${esc(c.industry||c.location||"")}</small>
+      </td>
+
+      <td>${cs.length}${cs.find(x=>x.is_primary)?` · ${esc(cs.find(x=>x.is_primary).name)}`:""}</td>
+
+      <td><span class="badge ${c.stage}">${c.stage}</span></td>
+
+      <td><span class="priority ${c.priority}">${c.priority}</span></td>
+
+      <td>${esc(member(c.owner_id))}</td>
+
+      <td>${fmt(c.next_follow_up)}</td>
+
+      <td>${money(c.estimated_value)}</td>
+
+      <td>${printFit}</td>
+
+      <td><button class="row-btn" onclick="openCompany('${c.id}')">•••</button></td>
+    </tr>`
+  }).join("")
+}
 function renderFollowups(){let a=S.companies.filter(c=>active(c)&&c.next_follow_up).sort((x,y)=>x.next_follow_up.localeCompare(y.next_follow_up)),t=today();$("#overdueList").innerHTML=list(a.filter(c=>c.next_follow_up<t),c=>fmt(c.next_follow_up),"Nothing overdue.");$("#todayList").innerHTML=list(a.filter(c=>c.next_follow_up===t),c=>c.priority,"Nothing due today.");$("#upcomingList").innerHTML=list(a.filter(c=>c.next_follow_up>t),c=>fmt(c.next_follow_up),"Nothing upcoming.")}
 function renderSettings(){$("#workspaceCode").textContent=S.workspace.invite_code;$("#teamList").innerHTML=S.members.map(m=>`<div class="list-item"><div><strong>${esc(m.display_name||"Team member")}</strong><small>${esc(m.email)}</small></div><span>${esc(m.role)}</span></div>`).join("")}
 window.openCompany=id=>{let c=S.companies.find(x=>x.id===id);S.current=c||null;$("#companyId").value=c?.id||"";$("#companyTitle").textContent=c?"Edit company":"Add company";let map={companyName:"name",website:"website",industry:"industry",location:"location",stage:"stage",priority:"priority",owner:"owner_id",source:"source",products:"products",estimatedValue:"estimated_value",lastContacted:"last_contacted",nextFollowUp:"next_follow_up",opportunitySummary:"opportunity_summary",notes:"notes"};Object.entries(map).forEach(([el,k])=>$("#"+el).value=c?.[k]??(el==="stage"?"New Lead":el==="priority"?"Normal":""));$("#owner").value=c?.owner_id||S.user.id;$("#deleteCompanyBtn").classList.toggle("hidden",!c);resetContactForm();renderContacts();renderActivity();tab("overview");$("#companyDialog").showModal()}
