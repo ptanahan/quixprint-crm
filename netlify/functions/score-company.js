@@ -64,7 +64,7 @@ Products: ${company.products || ""}
 Opportunity Summary: ${company.opportunity_summary || ""}
 Notes: ${company.notes || ""}
 
-Return ONLY valid JSON in exactly this format:
+Return only valid JSON in this format:
 
 {
   "score": 85,
@@ -73,7 +73,7 @@ Return ONLY valid JSON in exactly this format:
 `;
 
     const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/interactions",
       {
         method: "POST",
         headers: {
@@ -81,43 +81,55 @@ Return ONLY valid JSON in exactly this format:
           "x-goog-api-key": process.env.GEMINI_API_KEY
         },
         body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: prompt
+          model: "gemini-3.5-flash-lite",
+          input: prompt,
+          response_format: {
+            type: "text",
+            mime_type: "application/json",
+            schema: {
+              type: "object",
+              properties: {
+                score: {
+                  type: "integer"
+                },
+                reason: {
+                  type: "string"
                 }
-              ]
+              },
+              required: ["score", "reason"]
             }
-          ],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: "application/json"
           }
         })
       }
     );
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    const data = await response.json();
 
+    if (!response.ok) {
       return {
         statusCode: response.status,
         body: JSON.stringify({
           error: "Gemini request failed",
-          details: errorText
+          details: JSON.stringify(data)
         })
       };
     }
 
-    const data = await response.json();
+    let text = data.output_text;
 
-    const text =
-      data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text && Array.isArray(data.steps)) {
+      const modelStep = [...data.steps]
+        .reverse()
+        .find(step => step.type === "model_output");
+
+      text = modelStep?.content
+        ?.filter(part => part.type === "text")
+        ?.map(part => part.text)
+        ?.join("");
+    }
 
     if (!text) {
-      throw new Error("Gemini returned no score.");
+      throw new Error("Gemini returned no text response.");
     }
 
     const result = JSON.parse(text);
@@ -140,6 +152,7 @@ Return ONLY valid JSON in exactly this format:
         reason: result.reason || ""
       })
     };
+
   } catch (error) {
     console.error(error);
 
