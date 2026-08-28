@@ -212,6 +212,21 @@ async function scoreUnscoredCompanies() {
     toast(`${completed} companies scored successfully.`);
   }
 }
+window.showPrintFitReason = id => {
+  const company = S.companies.find(c => c.id === id);
+  if (!company) return;
+
+  $("#printFitCompanyName").textContent = company.name;
+  $("#printFitModalScore").textContent =
+    company.print_fit_score !== null && company.print_fit_score !== undefined
+      ? `${company.print_fit_score}/100`
+      : "—";
+
+  $("#printFitModalReason").textContent =
+    company.print_fit_reason || "No AI reason available.";
+
+  $("#printFitDialog").showModal();
+};
 function renderCompanies(){
   let rows=sortCompanies(filtered());
   updateSortIcons();
@@ -224,10 +239,11 @@ function renderCompanies(){
     let printFit =
   c.print_fit_score === null || c.print_fit_score === undefined
     ? "—"
-    : `<div class="print-fit-wrap">
-        <span class="print-fit-score">${c.print_fit_score}</span>
-        <small class="print-fit-reason">${esc(c.print_fit_reason || "")}</small>
-      </div>`;
+    : `<button
+        class="print-fit-score"
+        onclick="showPrintFitReason('${c.id}')"
+        type="button"
+      >${c.print_fit_score}</button>`;
 
     return `<tr>
       <td>
