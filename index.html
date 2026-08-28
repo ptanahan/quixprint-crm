@@ -222,5 +222,37 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
+<dialog id="printFitDialog" class="print-fit-dialog">
+  <div class="print-fit-modal">
+    <div class="print-fit-modal-head">
+      <div>
+        <small>AI Print Fit</small>
+        <h3 id="printFitCompanyName">Company</h3>
+      </div>
+
+      <button
+        type="button"
+        class="print-fit-close"
+        onclick="document.getElementById('printFitDialog').close()"
+      >
+        ×
+      </button>
+    </div>
+
+    <div class="print-fit-modal-score" id="printFitModalScore">—</div>
+
+    <p id="printFitModalReason"></p>
+
+    <div class="print-fit-modal-actions">
+      <button
+        type="button"
+        class="btn secondary"
+        onclick="document.getElementById('printFitDialog').close()"
+      >
+        Close
+      </button>
+    </div>
+  </div>
+</dialog>
 </body>
 </html>
