@@ -101,16 +101,93 @@ async function withRetry(fn, tries = 3) {
 
   return last;
 }
+let importInProgress = false;
 
+function showImportProgress(current, total, added, skipped) {
+  let overlay = document.getElementById("import-progress-overlay");
+
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "import-progress-overlay";
+
+    overlay.style.position = "fixed";
+    overlay.style.inset = "0";
+    overlay.style.background = "rgba(0,0,0,.65)";
+    overlay.style.zIndex = "99999";
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
+
+    overlay.innerHTML = `
+      <div style="
+        background:#fff;
+        width:min(460px,90vw);
+        border-radius:16px;
+        padding:28px;
+        box-shadow:0 20px 60px rgba(0,0,0,.25);
+        font-family:inherit;
+      ">
+        <h2 style="margin:0 0 10px;">Importing prospects…</h2>
+
+        <div id="import-progress-text" style="margin-bottom:14px;"></div>
+
+        <div style="
+          height:12px;
+          background:#eee;
+          border-radius:999px;
+          overflow:hidden;
+        ">
+          <div id="import-progress-bar" style="
+            height:100%;
+            width:0%;
+            background:#147EE0;
+            transition:width .2s ease;
+          "></div>
+        </div>
+
+        <p style="margin:14px 0 0;color:#666;font-size:14px;">
+          Do not close or refresh this page until the import is complete.
+        </p>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+  }
+
+  let pct = total ? Math.round((current / total) * 100) : 0;
+
+  document.getElementById("import-progress-text").innerHTML = `
+    <strong>Company ${current} of ${total}</strong><br>
+    ${added} contacts added<br>
+    ${skipped} duplicate contacts skipped<br>
+    ${pct}% complete
+  `;
+
+  document.getElementById("import-progress-bar").style.width = `${pct}%`;
+}
+
+function hideImportProgress() {
+  document.getElementById("import-progress-overlay")?.remove();
+}
+
+window.addEventListener("beforeunload", function (e) {
+  if (!importInProgress) return;
+
+  e.preventDefault();
+  e.returnValue = "";
+});
 async function importCSV(e) {
   let f = e.target.files[0];
 
   if (!f) return;
 
+  importInProgress = true;
+
   let rows = parseCSV(await f.text());
   let h = rows[0]?.map(x => x.trim().toLowerCase());
 
   if (!h?.includes("company")) {
+    importInProgress = false;
     return toast("CSV must include a company column.", true);
   }
 
@@ -130,13 +207,30 @@ async function importCSV(e) {
     (groups[norm(r.company)] ??= []).push(r);
   });
 
+  let groupList = Object.values(groups);
+
   let importedCompanies = 0;
   let importedContacts = 0;
   let skippedContacts = 0;
   let failures = [];
 
-  for (const group of Object.values(groups)) {
+  showImportProgress(
+    0,
+    groupList.length,
+    importedContacts,
+    skippedContacts
+  );
+
+  for (let i = 0; i < groupList.length; i++) {
+    let group = groupList[i];
     let r = group[0];
+
+    showImportProgress(
+      i + 1,
+      groupList.length,
+      importedContacts,
+      skippedContacts
+    );
 
     let payload = {
       workspace_id: S.workspace.id,
@@ -180,8 +274,6 @@ async function importCSV(e) {
         .single()
     );
 
-    // IMPORTANT:
-    // A failed company no longer kills the entire import.
     if (error) {
       failures.push(
         `Rows ${group.map(x => x.__row).join(", ")} ` +
@@ -193,7 +285,6 @@ async function importCSV(e) {
 
     importedCompanies++;
 
-    // Get contacts that already exist for this company.
     let {
       data: existing,
       error: existingError
@@ -216,14 +307,11 @@ async function importCSV(e) {
       continue;
     }
 
-    // Build a list of contacts that already exist.
     let existingKeys = new Set(
       (existing || []).map(contactKey)
     );
 
-    // Also prevent duplicate contacts within this CSV.
     let seenKeys = new Set();
-
     let contacts = [];
 
     for (const x of group.filter(x => x.contact_name)) {
@@ -243,7 +331,6 @@ async function importCSV(e) {
 
       let key = contactKey(c);
 
-      // Don't re-add the 92 contacts that already imported.
       if (
         existingKeys.has(key) ||
         seenKeys.has(key)
@@ -274,11 +361,17 @@ async function importCSV(e) {
     }
   }
 
-  // Reset the file input so the same CSV can be selected again.
   e.target.value = "";
 
   await loadAll();
   render();
+
+  showImportProgress(
+    groupList.length,
+    groupList.length,
+    importedContacts,
+    skippedContacts
+  );
 
   let msg =
     `Import complete: ` +
@@ -286,16 +379,20 @@ async function importCSV(e) {
     `${importedContacts} contacts added, ` +
     `${skippedContacts} duplicate contacts skipped.`;
 
-  if (failures.length) {
-    console.error("CSV import failures", failures);
+  setTimeout(() => {
+    hideImportProgress();
+    importInProgress = false;
 
-    toast(
-      `${msg} ${failures.length} company group(s) failed. ` +
-      `Open the browser console for details.`,
-      true
-    );
-  } else {
-    toast(msg);
-  }
+    if (failures.length) {
+      console.error("CSV import failures", failures);
+
+      toast(
+        `${msg} ${failures.length} company group(s) failed.`,
+        true
+      );
+    } else {
+      toast(msg);
+    }
+  }, 800);
 }
 init();
