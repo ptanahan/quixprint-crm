@@ -196,3 +196,14 @@
   justify-content: flex-end;
   margin-top: 24px;
 }
+
+.phone-link {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.phone-link:hover {
+  color: #147EE0;
+  text-decoration: underline;
+}
