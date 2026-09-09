@@ -519,6 +519,7 @@ function renderActivity(){
 
   $("#activityTimeline").innerHTML=rows.map(a=>{
     let c=S.contacts.find(x=>x.id===a.contact_id);
+    let recordedBy=member(a.created_by);
 
     return `
       <article class="timeline-item">
@@ -532,6 +533,7 @@ function renderActivity(){
               ${fmt(a.activity_date)}
               ${a.created_at ? " · " + fmtTime(a.created_at) : ""}
               ${c ? " · " + esc(c.name) : ""}
+              ${a.created_by ? " · Recorded by " + esc(recordedBy) : ""}
             </small>
 
             ${a.body
