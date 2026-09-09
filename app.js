@@ -40,12 +40,18 @@ window.logCallClick = async contactId => {
     return toast("Google Voice opened, but the call could not be logged.", true);
   }
 
+  const companyUpdate = {
+    last_contacted: callDate,
+    updated_by: S.user.id
+  };
+  
+  if (!["Won","Lost"].includes(S.current.stage)) {
+    companyUpdate.stage = "Contacted";
+  }
+  
   await db
     .from("companies")
-    .update({
-      last_contacted: callDate,
-      updated_by: S.user.id
-    })
+    .update(companyUpdate)
     .eq("id", S.current.id);
 
   await loadAll();
@@ -583,6 +589,7 @@ async function saveActivity(e){
   };
 
   let error;
+  const wasEditing=!!editingActivityId;
 
   if (editingActivityId) {
 
@@ -613,16 +620,21 @@ async function saveActivity(e){
   }
 
   if(["Call","Email","Meeting"].includes(p.activity_type)) {
+
+    const companyUpdate = {
+      last_contacted:p.activity_date,
+      updated_by:S.user.id
+    };
+
+    if (!wasEditing && !["Won","Lost"].includes(S.current.stage)) {
+      companyUpdate.stage="Contacted";
+    }
+
     await db
       .from("companies")
-      .update({
-        last_contacted:p.activity_date,
-        updated_by:S.user.id
-      })
+      .update(companyUpdate)
       .eq("id",S.current.id);
   }
-
-  const wasEditing=!!editingActivityId;
 
   editingActivityId=null;
 
