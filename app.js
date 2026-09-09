@@ -54,6 +54,14 @@ window.logCallClick = async contactId => {
 
   toast(`Call to ${contact.name} logged.`);
 };
+function fmtTime(value) {
+  if (!value) return "";
+
+  return new Date(value).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
 function toast(m,e=false){let t=$("#toast");t.textContent=m;t.className="toast show"+(e?" error":"");setTimeout(()=>t.className="toast",2600)}
 function initTabs(){$$("[data-auth]").forEach(b=>b.onclick=()=>{$$("[data-auth]").forEach(x=>x.classList.toggle("active",x===b));$("#loginForm").classList.toggle("hidden",b.dataset.auth!=="login");$("#signupForm").classList.toggle("hidden",b.dataset.auth!=="signup")});$("#stage").innerHTML=stages.map(x=>`<option>${x}</option>`).join("");$("#stageFilter").innerHTML='<option value="">All stages</option>'+stages.map(x=>`<option>${x}</option>`).join("")}
 async function init(){initTabs();if(!ok){$("#configWarning").classList.remove("hidden");return}let {data:{session}}=await db.auth.getSession();if(session)await enter(session.user)}
@@ -462,6 +470,39 @@ window.editActivity = id => {
 
   $("#activityBody").focus();
 };
+window.deleteActivity = async id => {
+  const activity = S.activities.find(a => a.id === id);
+
+  if (!activity) return;
+
+  if (!confirm("Delete this activity?")) {
+    return;
+  }
+
+  const { error } = await db
+    .from("activities")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    return toast(error.message, true);
+  }
+
+  if (editingActivityId === id) {
+    editingActivityId = null;
+
+    $("#activitySubject").value = "";
+    $("#activityBody").value = "";
+    $("#activityContact").value = "";
+    $("#activityDate").value = today();
+  }
+
+  await loadAll();
+  render();
+  renderActivity();
+
+  toast("Activity deleted.");
+};
 function renderActivity(){
   let enabled=!!S.current;
 
@@ -489,7 +530,8 @@ function renderActivity(){
 
             <small>
               ${fmt(a.activity_date)}
-              ${c?" · "+esc(c.name):""}
+              ${a.created_at ? " · " + fmtTime(a.created_at) : ""}
+              ${c ? " · " + esc(c.name) : ""}
             </small>
 
             ${a.body
@@ -498,13 +540,23 @@ function renderActivity(){
             }
           </div>
 
-          <button
-            type="button"
-            class="btn secondary"
-            onclick="editActivity('${a.id}')"
-          >
-            Edit
-          </button>
+          <div style="display:flex;gap:8px;">
+            <button
+              type="button"
+              class="btn secondary"
+              onclick="editActivity('${a.id}')"
+            >
+              Edit
+            </button>
+
+            <button
+              type="button"
+              class="btn danger"
+              onclick="deleteActivity('${a.id}')"
+            >
+              Delete
+            </button>
+          </div>
 
         </div>
 
