@@ -4,6 +4,17 @@ const stages=["New Lead","Researching","Contacted","Follow-Up","Quoted","Won","L
 const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 const today=()=>new Date().toISOString().slice(0,10),fmt=v=>v?new Date(v+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):"—",money=v=>Number(v||0).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
 const member=id=>S.members.find(x=>x.user_id===id)?.display_name||"Unassigned",active=c=>!["Won","Lost"].includes(c.stage);
+function googleVoiceLink(phone) {
+  if (!phone) return "";
+
+  let digits = String(phone).replace(/\D/g, "");
+
+  if (digits.length === 10) {
+    digits = "1" + digits;
+  }
+
+  return `https://voice.google.com/u/0/calls?a=nc,%2B${digits}`;
+}
 function toast(m,e=false){let t=$("#toast");t.textContent=m;t.className="toast show"+(e?" error":"");setTimeout(()=>t.className="toast",2600)}
 function initTabs(){$$("[data-auth]").forEach(b=>b.onclick=()=>{$$("[data-auth]").forEach(x=>x.classList.toggle("active",x===b));$("#loginForm").classList.toggle("hidden",b.dataset.auth!=="login");$("#signupForm").classList.toggle("hidden",b.dataset.auth!=="signup")});$("#stage").innerHTML=stages.map(x=>`<option>${x}</option>`).join("");$("#stageFilter").innerHTML='<option value="">All stages</option>'+stages.map(x=>`<option>${x}</option>`).join("")}
 async function init(){initTabs();if(!ok){$("#configWarning").classList.remove("hidden");return}let {data:{session}}=await db.auth.getSession();if(session)await enter(session.user)}
@@ -345,7 +356,47 @@ window.openCompany=id=>{let c=S.companies.find(x=>x.id===id);S.current=c||null;$
 function tab(n){$$("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===n));["overview","contacts","activity"].forEach(x=>$("#"+x+"Tab").classList.toggle("hidden",x!==n))}
 async function saveCompany(e){e.preventDefault();let id=$("#companyId").value,p={workspace_id:S.workspace.id,name:$("#companyName").value.trim(),website:$("#website").value.trim()||null,industry:$("#industry").value.trim()||null,location:$("#location").value.trim()||null,stage:$("#stage").value,priority:$("#priority").value,owner_id:$("#owner").value||null,source:$("#source").value.trim()||null,products:$("#products").value.trim()||null,estimated_value:Number($("#estimatedValue").value)||null,last_contacted:$("#lastContacted").value||null,next_follow_up:$("#nextFollowUp").value||null,opportunity_summary:$("#opportunitySummary").value.trim()||null,notes:$("#notes").value.trim()||null,updated_by:S.user.id};let {data,error}=await(id?db.from("companies").update(p).eq("id",id).select().single():db.from("companies").insert(p).select().single());if(error)return toast(error.message,true);S.current=data;$("#companyId").value=data.id;$("#deleteCompanyBtn").classList.remove("hidden");await loadAll();render();renderContacts();renderActivity();toast(id?"Company updated.":"Company added.")}
 async function deleteCompany(){if(!confirm("Delete this company, its contacts and activity history?"))return;let {error}=await db.from("companies").delete().eq("id",S.current.id);if(error)return toast(error.message,true);$("#companyDialog").close();await loadAll();render();toast("Company deleted.")}
-function renderContacts(){let enabled=!!S.current;$("#contactWarning").classList.toggle("hidden",enabled);$("#contactForm").classList.toggle("hidden",!enabled);let rows=S.contacts.filter(c=>c.company_id===S.current?.id);$("#contactsList").innerHTML=rows.map(c=>`<div class="contact-card"><div><h4>${esc(c.name)}${c.is_primary?' <span class="badge">Primary</span>':""}</h4><p>${esc(c.title||"")}</p><p>${esc(c.email||"")} ${c.phone?"· "+esc(c.phone):""}</p></div><div class="contact-actions"><button class="btn secondary" onclick="editContact('${c.id}')">Edit</button><button class="btn danger" onclick="deleteContact('${c.id}')">Delete</button></div></div>`).join("")||'<div class="empty">No contacts yet.</div>';$("#activityContact").innerHTML='<option value="">No specific contact</option>'+rows.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}
+function renderContacts(){
+  let enabled=!!S.current;
+  $("#contactWarning").classList.toggle("hidden",enabled);
+  $("#contactForm").classList.toggle("hidden",!enabled);
+
+  let rows=S.contacts.filter(c=>c.company_id===S.current?.id);
+
+  $("#contactsList").innerHTML=rows.map(c=>`
+    <div class="contact-card">
+      <div>
+        <h4>
+          ${esc(c.name)}
+          ${c.is_primary?' <span class="badge">Primary</span>':""}
+        </h4>
+
+        <p>${esc(c.title||"")}</p>
+
+        <p>
+          ${esc(c.email||"")}
+          ${c.phone
+            ? ` · <a
+                href="${googleVoiceLink(c.phone)}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="phone-link"
+              >${esc(c.phone)}</a>`
+            : ""}
+        </p>
+      </div>
+
+      <div class="contact-actions">
+        <button class="btn secondary" onclick="editContact('${c.id}')">Edit</button>
+        <button class="btn danger" onclick="deleteContact('${c.id}')">Delete</button>
+      </div>
+    </div>
+  `).join("")||'<div class="empty">No contacts yet.</div>';
+
+  $("#activityContact").innerHTML=
+    '<option value="">No specific contact</option>'+
+    rows.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("");
+}
 function resetContactForm(){$("#contactForm").reset();$("#contactId").value="";$("#contactPrimary").value="false";$("#cancelContactEditBtn").classList.add("hidden")}
 window.editContact=id=>{let c=S.contacts.find(x=>x.id===id);$("#contactId").value=c.id;$("#contactName").value=c.name;$("#contactTitle").value=c.title||"";$("#contactEmail").value=c.email||"";$("#contactPhone").value=c.phone||"";$("#contactLinkedin").value=c.linkedin||"";$("#contactPrimary").value=String(c.is_primary);$("#cancelContactEditBtn").classList.remove("hidden")}
 async function saveContact(e){e.preventDefault();if(!S.current)return;let id=$("#contactId").value,p={workspace_id:S.workspace.id,company_id:S.current.id,name:$("#contactName").value.trim(),title:$("#contactTitle").value.trim()||null,email:$("#contactEmail").value.trim()||null,phone:$("#contactPhone").value.trim()||null,linkedin:$("#contactLinkedin").value.trim()||null,is_primary:$("#contactPrimary").value==="true"};if(p.is_primary)await db.from("contacts").update({is_primary:false}).eq("company_id",S.current.id);let {error}=await(id?db.from("contacts").update(p).eq("id",id):db.from("contacts").insert(p));if(error)return toast(error.message,true);await loadAll();render();resetContactForm();renderContacts();toast(id?"Contact updated.":"Contact added.")}
