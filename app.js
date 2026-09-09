@@ -15,6 +15,45 @@ function googleVoiceLink(phone) {
 
   return `https://voice.google.com/u/0/calls?a=nc,%2B${digits}`;
 }
+window.logCallClick = async contactId => {
+  const contact = S.contacts.find(c => c.id === contactId);
+
+  if (!contact || !S.current) return;
+
+  const callDate = today();
+
+  const { error } = await db
+    .from("activities")
+    .insert({
+      workspace_id: S.workspace.id,
+      company_id: S.current.id,
+      contact_id: contact.id,
+      activity_type: "Call",
+      subject: `Outbound call to ${contact.name}`,
+      body: null,
+      activity_date: callDate,
+      created_by: S.user.id
+    });
+
+  if (error) {
+    console.error("Unable to log call:", error);
+    return toast("Google Voice opened, but the call could not be logged.", true);
+  }
+
+  await db
+    .from("companies")
+    .update({
+      last_contacted: callDate,
+      updated_by: S.user.id
+    })
+    .eq("id", S.current.id);
+
+  await loadAll();
+  render();
+  renderActivity();
+
+  toast(`Call to ${contact.name} logged.`);
+};
 function toast(m,e=false){let t=$("#toast");t.textContent=m;t.className="toast show"+(e?" error":"");setTimeout(()=>t.className="toast",2600)}
 function initTabs(){$$("[data-auth]").forEach(b=>b.onclick=()=>{$$("[data-auth]").forEach(x=>x.classList.toggle("active",x===b));$("#loginForm").classList.toggle("hidden",b.dataset.auth!=="login");$("#signupForm").classList.toggle("hidden",b.dataset.auth!=="signup")});$("#stage").innerHTML=stages.map(x=>`<option>${x}</option>`).join("");$("#stageFilter").innerHTML='<option value="">All stages</option>'+stages.map(x=>`<option>${x}</option>`).join("")}
 async function init(){initTabs();if(!ok){$("#configWarning").classList.remove("hidden");return}let {data:{session}}=await db.auth.getSession();if(session)await enter(session.user)}
@@ -381,6 +420,7 @@ function renderContacts(){
                 target="_blank"
                 rel="noopener noreferrer"
                 class="phone-link"
+                onclick="logCallClick('${c.id}')"
               >${esc(c.phone)}</a>`
             : ""}
         </p>
@@ -401,8 +441,148 @@ function resetContactForm(){$("#contactForm").reset();$("#contactId").value="";$
 window.editContact=id=>{let c=S.contacts.find(x=>x.id===id);$("#contactId").value=c.id;$("#contactName").value=c.name;$("#contactTitle").value=c.title||"";$("#contactEmail").value=c.email||"";$("#contactPhone").value=c.phone||"";$("#contactLinkedin").value=c.linkedin||"";$("#contactPrimary").value=String(c.is_primary);$("#cancelContactEditBtn").classList.remove("hidden")}
 async function saveContact(e){e.preventDefault();if(!S.current)return;let id=$("#contactId").value,p={workspace_id:S.workspace.id,company_id:S.current.id,name:$("#contactName").value.trim(),title:$("#contactTitle").value.trim()||null,email:$("#contactEmail").value.trim()||null,phone:$("#contactPhone").value.trim()||null,linkedin:$("#contactLinkedin").value.trim()||null,is_primary:$("#contactPrimary").value==="true"};if(p.is_primary)await db.from("contacts").update({is_primary:false}).eq("company_id",S.current.id);let {error}=await(id?db.from("contacts").update(p).eq("id",id):db.from("contacts").insert(p));if(error)return toast(error.message,true);await loadAll();render();resetContactForm();renderContacts();toast(id?"Contact updated.":"Contact added.")}
 window.deleteContact=async id=>{if(!confirm("Delete this contact?"))return;let {error}=await db.from("contacts").delete().eq("id",id);if(error)return toast(error.message,true);await loadAll();render();renderContacts();toast("Contact deleted.")}
-function renderActivity(){let enabled=!!S.current;$("#activityWarning").classList.toggle("hidden",enabled);$("#activityForm").classList.toggle("hidden",!enabled);$("#activityDate").value=today();let rows=S.activities.filter(a=>a.company_id===S.current?.id);$("#activityTimeline").innerHTML=rows.map(a=>{let c=S.contacts.find(x=>x.id===a.contact_id);return `<article class="timeline-item"><h4>${esc(a.activity_type)} · ${esc(a.subject)}</h4><small>${fmt(a.activity_date)}${c?" · "+esc(c.name):""}</small>${a.body?`<p>${esc(a.body)}</p>`:""}</article>`}).join("")||'<div class="empty">No activity yet.</div>'}
-async function saveActivity(e){e.preventDefault();if(!S.current)return;let p={workspace_id:S.workspace.id,company_id:S.current.id,contact_id:$("#activityContact").value||null,activity_type:$("#activityType").value,subject:$("#activitySubject").value.trim(),body:$("#activityBody").value.trim()||null,activity_date:$("#activityDate").value||today(),created_by:S.user.id};let {error}=await db.from("activities").insert(p);if(error)return toast(error.message,true);if(["Call","Email","Meeting"].includes(p.activity_type))await db.from("companies").update({last_contacted:p.activity_date,updated_by:S.user.id}).eq("id",S.current.id);$("#activitySubject").value="";$("#activityBody").value="";await loadAll();render();renderActivity();toast("Activity logged.")}
+let editingActivityId = null;
+window.editActivity = id => {
+  const activity = S.activities.find(a => a.id === id);
+
+  if (!activity) return;
+
+  editingActivityId = activity.id;
+
+  $("#activityType").value = activity.activity_type || "Call";
+  $("#activitySubject").value = activity.subject || "";
+  $("#activityBody").value = activity.body || "";
+  $("#activityDate").value = activity.activity_date || today();
+  $("#activityContact").value = activity.contact_id || "";
+
+  $("#activityForm").scrollIntoView({
+    behavior: "smooth",
+    block: "start"
+  });
+
+  $("#activityBody").focus();
+};
+function renderActivity(){
+  let enabled=!!S.current;
+
+  $("#activityWarning").classList.toggle("hidden",enabled);
+  $("#activityForm").classList.toggle("hidden",!enabled);
+
+  if (!editingActivityId) {
+    $("#activityDate").value=today();
+  }
+
+  let rows=S.activities.filter(
+    a=>a.company_id===S.current?.id
+  );
+
+  $("#activityTimeline").innerHTML=rows.map(a=>{
+    let c=S.contacts.find(x=>x.id===a.contact_id);
+
+    return `
+      <article class="timeline-item">
+
+        <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;">
+
+          <div>
+            <h4>${esc(a.activity_type)} · ${esc(a.subject)}</h4>
+
+            <small>
+              ${fmt(a.activity_date)}
+              ${c?" · "+esc(c.name):""}
+            </small>
+
+            ${a.body
+              ? `<p>${esc(a.body)}</p>`
+              : ""
+            }
+          </div>
+
+          <button
+            type="button"
+            class="btn secondary"
+            onclick="editActivity('${a.id}')"
+          >
+            Edit
+          </button>
+
+        </div>
+
+      </article>
+    `;
+  }).join("")||'<div class="empty">No activity yet.</div>';
+}
+async function saveActivity(e){
+  e.preventDefault();
+
+  if(!S.current) return;
+
+  let p={
+    workspace_id:S.workspace.id,
+    company_id:S.current.id,
+    contact_id:$("#activityContact").value||null,
+    activity_type:$("#activityType").value,
+    subject:$("#activitySubject").value.trim(),
+    body:$("#activityBody").value.trim()||null,
+    activity_date:$("#activityDate").value||today(),
+    created_by:S.user.id
+  };
+
+  let error;
+
+  if (editingActivityId) {
+
+    const result = await db
+      .from("activities")
+      .update({
+        contact_id:p.contact_id,
+        activity_type:p.activity_type,
+        subject:p.subject,
+        body:p.body,
+        activity_date:p.activity_date
+      })
+      .eq("id",editingActivityId);
+
+    error=result.error;
+
+  } else {
+
+    const result = await db
+      .from("activities")
+      .insert(p);
+
+    error=result.error;
+  }
+
+  if(error) {
+    return toast(error.message,true);
+  }
+
+  if(["Call","Email","Meeting"].includes(p.activity_type)) {
+    await db
+      .from("companies")
+      .update({
+        last_contacted:p.activity_date,
+        updated_by:S.user.id
+      })
+      .eq("id",S.current.id);
+  }
+
+  const wasEditing=!!editingActivityId;
+
+  editingActivityId=null;
+
+  $("#activitySubject").value="";
+  $("#activityBody").value="";
+  $("#activityContact").value="";
+  $("#activityDate").value=today();
+
+  await loadAll();
+  render();
+  renderActivity();
+
+  toast(wasEditing ? "Activity updated." : "Activity logged.");
+}
 function exportCSV(){let h=["company","website","industry","location","stage","priority","source","products","estimated_value","last_contacted","next_follow_up","opportunity_summary","notes","contact_name","contact_title","contact_email","contact_phone","contact_linkedin","contact_primary"],q=v=>`"${String(v??"").replaceAll('"','""')}"`,rows=[];filtered().forEach(c=>{let cs=S.contacts.filter(x=>x.company_id===c.id);if(!cs.length)cs=[{}];cs.forEach(k=>rows.push([c.name,c.website,c.industry,c.location,c.stage,c.priority,c.source,c.products,c.estimated_value,c.last_contacted,c.next_follow_up,c.opportunity_summary,c.notes,k.name,k.title,k.email,k.phone,k.linkedin,k.is_primary].map(q).join(",")))});let csv=[h.join(","),...rows].join("\n"),a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=`quixprint-companies-${today()}.csv`;a.click()}
 function parseCSV(t) {
   let rows = [], r = [], c = "", quoted = false;
