@@ -42,6 +42,7 @@ window.logCallClick = async contactId => {
 
   const companyUpdate = {
     last_contacted: callDate,
+    owner_id: S.user.id,
     updated_by: S.user.id
   };
   
@@ -620,16 +621,20 @@ async function saveActivity(e){
   }
 
   if(["Call","Email","Meeting"].includes(p.activity_type)) {
-
+  
     const companyUpdate = {
       last_contacted:p.activity_date,
       updated_by:S.user.id
     };
-
-    if (!wasEditing && !["Won","Lost"].includes(S.current.stage)) {
-      companyUpdate.stage="Contacted";
+  
+    if (!wasEditing) {
+      companyUpdate.owner_id = S.user.id;
+  
+      if (!["Won","Lost"].includes(S.current.stage)) {
+        companyUpdate.stage = "Contacted";
+      }
     }
-
+  
     await db
       .from("companies")
       .update(companyUpdate)
